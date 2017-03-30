@@ -1,19 +1,38 @@
 -module(node).
--compile(export_all).
+-export([start/1, stop/1, init/2, loop/1, search/2]).
 
+start(Url) ->
+  spawn(?MODULE, init, [self(), Url]).
 
-loop() ->
+stop(Pid) ->
+  Pid ! {shutdown, self()}.
+
+init(Server, Url) ->
+  % get the fingerptint for this url
+  {inbox, 'boilerpipe@localhost'} ! {url, Url, self()},
+  % start the node
   receive
-    {search, Query, Ref} ->
-      io:format("Bla~n"),
-      %search for results
-      Res1="www.site1.com",
-      Res2="www.site2.com",
-      Res3="www.site3.com",
-      ResN="www.siten.com",
+    {fingerprint, ContentFingerprint} ->
+      % node is ready for querying
+      Server ! {ready, self()},
+      loop(ContentFingerprint)
+  end.
 
-      Ref ! {results, [Res1, Res2, Res3, ResN]},
-      loop();
+search(Pid, Query) ->
+  Pid ! {search, Query}.
+
+loop(ContentFingerprint) ->
+  receive
+    {search, Query} ->
+      {inbox, 'boilerpipe@localhost'} ! {search_query, Query, self()},
+      loop(ContentFingerprint);
+    {fingerprint, QueryFingerprint} ->
+      io:format("~p~n", [cosine_similarity(ContentFingerprint, QueryFingerprint)]),
+      loop(ContentFingerprint);
     {shutdown, Server} ->
       Server ! {done}
   end.
+
+cosine_similarity(A, B) ->
+  Intersection=sets:intersection(sets:from_list(A), sets:from_list(B)),
+  length(sets:to_list(Intersection))/(math:sqrt(length(A))*math:sqrt(length(B))).
